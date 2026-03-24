@@ -1,0 +1,22 @@
+# 1. Ignoruj absolutnie wszystko
+*
+
+# 2. Nie ignoruj samego pliku .gitignore (ważne, by zmiany w liście były śledzone)
+!.gitignore
+
+# 3. Pozwól na katalogi (bez tego Git nie wejdzie do środka, by szukać plików)
+!*/
+
+# 4. Biała lista plików
+!radiacode_lib.h
+!radiacode_buffer.h
+!main.cpp
+!makefile
+
+# 5. Biała lista konkretnych katalogów i ich zawartości
+#!src/**
+#!scripts/**
+
+# 6. Opcjonalne: Ponowne zignorowanie konkretnych plików wewnątrz dopuszczonych folderów
+# (np. jeśli chcesz cały folder 'src', ale bez plików .tmp)
+#src/*.tmp
