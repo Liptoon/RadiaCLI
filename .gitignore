@@ -12,6 +12,7 @@
 !radiacode_buffer.h
 !main.cpp
 !makefile
+!readme.md
 
 # 5. Biała lista konkretnych katalogów i ich zawartości
 #!src/**
