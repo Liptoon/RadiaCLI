@@ -278,35 +278,73 @@ static std::vector<DiscoveredDevice> discover_radiacode_devices() {
     return devices;
 }
 
-// Interactive MAC input with user prompt
+// Interactive MAC input with raw terminal mode for in-place editing.
+// Auto-inserts colons and uppercases hex digits as you type.
 static std::string interactive_mac_input() {
     std::string mac;
-    const char* allowed_chars = "0123456789ABCDEFabcdef";
+    const char* hex_chars = "0123456789ABCDEFabcdef";
+
+    // Switch to raw terminal mode so each keypress is immediate.
+    struct termios oldt, rawt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    rawt = oldt;
+    rawt.c_lflag &= ~(ICANON | ECHO);
+    rawt.c_cc[VMIN]  = 1;
+    rawt.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &rawt);
+
+    auto redraw = [&]() {
+        // Build display: typed chars + remaining underscores
+        std::string display = mac;
+        // Fill remaining positions with the template pattern
+        size_t pos = mac.length();
+        while (pos < 17) {
+            display += (pos % 3 == 2) ? ':' : '_';
+            ++pos;
+        }
+        std::cerr << "\rMAC: " << display << std::flush;
+        // Move cursor back to the current input position
+        int back = 17 - static_cast<int>(mac.length());
+        if (back > 0) std::cerr << "\033[" << back << "D" << std::flush;
+    };
+
     std::cerr << "Enter RadiaCode MAC (format: XX:XX:XX:XX:XX:XX):\n";
+    redraw();
+
     while (mac.length() < 17) {
-        std::cerr << "\rMAC: " << mac << std::string(17 - mac.length(), '_');
-        std::cerr.flush();
         int ch = getchar();
-        if (ch == '\n' || ch == '\r' || ch == 'q' || ch == 'Q') {
-            if (mac.length() == 17) break;
-            std::cerr << "\n[!] Invalid MAC (need 17 chars).\n";
-            mac.clear();
-            continue;
+        if (ch == EOF || ch == 3) {  // EOF or Ctrl+C
+            tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+            std::cerr << "\n";
+            exit(1);
         }
         if (ch == 127 || ch == 8) {  // backspace
-            if (mac.length() > 0) {
+            if (!mac.empty()) {
                 mac.pop_back();
-                if (mac.length() > 0 && mac.back() == ':') mac.pop_back();
+                // Also remove auto-inserted colon
+                if (!mac.empty() && mac.back() == ':') mac.pop_back();
             }
+            redraw();
+            continue;
+        }
+        if (ch == '\n' || ch == '\r') {
+            if (mac.length() == 17) break;
+            // Ignore Enter if MAC is incomplete
             continue;
         }
         ch = std::toupper(ch);
-        if (std::strchr(allowed_chars, ch)) {
-            mac += ch;
-            if (mac.length() % 3 == 2) mac += ':';
+        if (std::strchr(hex_chars, ch)) {
+            mac += static_cast<char>(ch);
+            // Auto-insert colon after every 2 hex digits (positions 2,5,8,11,14)
+            if (mac.length() < 17 && mac.length() % 3 == 2) mac += ':';
+            redraw();
         }
     }
-    std::cerr << "\rMAC: " << mac << " [OK]\n";
+
+    // Restore terminal and print final result
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    // Clear line and print final MAC
+    std::cerr << "\rMAC: " << mac << " [OK]" << std::string(4, ' ') << "\n";
     return mac;
 }
 
@@ -317,7 +355,7 @@ static bool connect_device(const std::string& mac, Peripheral& out_device,
     std::vector<Adapter> adapters = Adapter::get_adapters();
     if (adapters.empty()) { if (!g_quiet_mode) std::cerr << "[!] No BT adapters.\n"; return false; }
 
-    if (!g_quiet_mode) std::cerr << "Connecting to " << mac << "...\n";
+    if (!g_quiet_mode) std::cerr << "[*] Connecting to " << mac << "...\n";
     adapters[0].scan_for(3000);
     bool found = false;
     for (auto& p : adapters[0].scan_get_results())
